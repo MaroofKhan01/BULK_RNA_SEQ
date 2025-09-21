@@ -1,7 +1,7 @@
 #!/bin/bash
 # -------------------------------
-# Bulk RNA-seq Pipeline (Single-End, Multiple Samples, gzipped FASTQ)
-# Author: Maroof Khan
+# Bulk RNA-seq Pipeline (Paired-End, Multiple Samples, gzipped FASTQ)
+# Author: Maroof
 # Date: $(date)
 # -------------------------------
 
@@ -11,7 +11,6 @@ SECONDS=0
 # -------------------------------
 # User-defined variables
 # -------------------------------
-# Input directory containing FASTQ.GZ files
 FASTQ_DIR="data"
 
 # Output directories
@@ -29,7 +28,7 @@ GTF="../hg38/Homo_sapiens.GRCh38.106.gtf"
 TRIMMOMATIC="~/Desktop/demo/tools/Trimmomatic-0.39/trimmomatic-0.39.jar"
 
 # Threads
-THREADS=30
+THREADS=4
 
 # -------------------------------
 # Create output directories
@@ -37,37 +36,46 @@ THREADS=30
 mkdir -p $QC_DIR $TRIM_DIR $ALIGN_DIR $COUNT_DIR
 
 # -------------------------------
-# Loop through each FASTQ.GZ file
+# Loop through paired FASTQ files
+# Assumes naming: sample_R1.fastq.gz and sample_R2.fastq.gz
 # -------------------------------
-for FASTQ in $FASTQ_DIR/*.fastq.gz; do
-    SAMPLE=$(basename "$FASTQ" .fastq.gz)
+for R1 in $FASTQ_DIR/*_R1.fastq.gz; do
+    SAMPLE=$(basename "$R1" _R1.fastq.gz)
+    R2="$FASTQ_DIR/${SAMPLE}_R2.fastq.gz"
+
     echo "==============================="
     echo "Processing sample: $SAMPLE"
     echo "==============================="
 
     # STEP 1: FastQC (before trimming)
-    fastqc $FASTQ -o $QC_DIR
+    fastqc $R1 $R2 -o $QC_DIR
 
-    # STEP 2: Trimming with Trimmomatic
-    TRIMMED_FASTQ="$TRIM_DIR/${SAMPLE}_trimmed.fastq.gz"
-    java -jar $TRIMMOMATIC SE -threads $THREADS \
-        $FASTQ $TRIMMED_FASTQ TRAILING:10 -phred33
+    # STEP 2: Trimming with Trimmomatic (paired-end mode)
+    TRIM_R1_PAIRED="$TRIM_DIR/${SAMPLE}_R1_trimmed_paired.fastq.gz"
+    TRIM_R1_UNPAIRED="$TRIM_DIR/${SAMPLE}_R1_trimmed_unpaired.fastq.gz"
+    TRIM_R2_PAIRED="$TRIM_DIR/${SAMPLE}_R2_trimmed_paired.fastq.gz"
+    TRIM_R2_UNPAIRED="$TRIM_DIR/${SAMPLE}_R2_trimmed_unpaired.fastq.gz"
+
+    java -jar $TRIMMOMATIC PE -threads $THREADS \
+        $R1 $R2 \
+        $TRIM_R1_PAIRED $TRIM_R1_UNPAIRED \
+        $TRIM_R2_PAIRED $TRIM_R2_UNPAIRED \
+        TRAILING:10 -phred33
     echo "Trimmomatic finished for $SAMPLE"
 
-    # QC after trimming
-    fastqc $TRIMMED_FASTQ -o $QC_DIR
+    # QC after trimming (paired reads only)
+    fastqc $TRIM_R1_PAIRED $TRIM_R2_PAIRED -o $QC_DIR
 
     # STEP 3: Alignment with HISAT2
     BAM="$ALIGN_DIR/${SAMPLE}.bam"
-    hisat2 -q --rna-strandness R -x $GENOME_INDEX \
-        -U $TRIMMED_FASTQ -p $THREADS \
+    hisat2 -q --rna-strandness RF -x $GENOME_INDEX \
+        -1 $TRIM_R1_PAIRED -2 $TRIM_R2_PAIRED -p $THREADS \
         | samtools sort -@ $THREADS -o $BAM
     samtools index $BAM
     echo "HISAT2 finished for $SAMPLE"
 
     # STEP 4: Quantification with featureCounts
-    featureCounts -T $THREADS -S 2 \
-        -a $GTF \
+    featureCounts -T $THREADS -p -B -C -a $GTF \
         -o $COUNT_DIR/${SAMPLE}_featurecounts.txt \
         $BAM
     echo "featureCounts finished for $SAMPLE"
@@ -78,4 +86,4 @@ done
 # Completion message
 # -------------------------------
 duration=$SECONDS
-echo "All samples processed in $(($duration / 60)) minutes and $(($duration % 60)) seconds."
+echo "All paired-end samples processed in $(($duration / 60)) minutes and $(($duration % 60)) seconds."
