@@ -28,8 +28,6 @@ RNASeq_pipeline/
 │── rnaseq_pipeline_pe.sh # Main pipeline script (paired-end)
 │── README.md # Documentation
 
-markdown
-Copy code
 
 ---
 
@@ -52,7 +50,7 @@ sample1_R2.fastq.gz
 sample2_R1.fastq.gz
 sample2_R2.fastq.gz
 
-yaml
+
 
 - **Reference files**:  
 - HISAT2 genome index → `HISAT2/grch38/genome.*`  
@@ -66,8 +64,6 @@ yaml
  chmod +x rnaseq_pipeline_pe.sh
 Run the pipeline:
 
-bash
-Copy code
 ./rnaseq_pipeline_pe.sh
 The pipeline will automatically:
 
